@@ -23,7 +23,13 @@ jobs:
         with:
           toolchain: stable
           override: true
-          target: ${{ matrix.arch }}-unknown-linux-gnu  # Linux 用的目标架构
+          target: ${{ matrix.arch }}-unknown-linux-gnu  # 设置目标架构
+
+      - name: Install additional targets for Rust
+        run: |
+          if [[ "${{ matrix.arch }}" == "arm" ]]; then
+            rustup target add arm-unknown-linux-gnu
+          fi
 
       - name: Generate Release Notes
         id: generate_notes
@@ -32,13 +38,11 @@ jobs:
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
           echo "Comparing changes from $PREVIOUS_TAG to HEAD"
           
-          # 获取所有的 commit 信息
           git log --pretty=format:"%s by @%an in #%h" $PREVIOUS_TAG..HEAD >> release_notes.txt
 
           echo "" >> release_notes.txt
           echo "New Contributors" >> release_notes.txt
           
-          # 获取新贡献者
           git log --pretty=format:"%an" $PREVIOUS_TAG..HEAD | sort | uniq -u | while read contributor; do
             FIRST_PR=$(git log --grep="$contributor" --pretty=format:"%h" --reverse $PREVIOUS_TAG..HEAD | head -n 1)
             echo "@$contributor made their first contribution in #$FIRST_PR" >> release_notes.txt
@@ -55,9 +59,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           cargo build --release --target=${{ matrix.arch }}-unknown-linux-gnu
-          # 生成 deb 包
           fpm -s dir -t deb target/${{ matrix.arch }}-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
-          # 生成 rpm 包
           fpm -s dir -t rpm target/${{ matrix.arch }}-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
 
       - name: Build for Windows
@@ -87,7 +89,6 @@ jobs:
       - name: Build Source Package
         run: |
           cargo package
-          # tar.gz 包
           tar -czvf my_project-${VERSION}.tar.gz target/package/my_project-${VERSION}
 
       - name: Upload to Release
@@ -95,7 +96,7 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           name: Release ${{ github.ref }}
-          body_path: release_notes.txt  # 使用生成的 release_notes.txt 作为发布说明
+          body_path: release_notes.txt
           files: |
             target/${{ matrix.arch }}-unknown-linux-gnu/release/my_project_name
             *.deb
