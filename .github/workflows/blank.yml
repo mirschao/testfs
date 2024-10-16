@@ -26,10 +26,7 @@ jobs:
         id: generate_notes
         run: |
           echo "Changes in this release:" > release_notes.txt
-          # Find the previous tag and compare to HEAD
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
-          echo "Comparing changes from $PREVIOUS_TAG to HEAD"
-          git log --pretty=format:"- %s by @%an" $PREVIOUS_TAG..HEAD >> release_notes.txt
+          git log --pretty=format:"- %s by @%an" >> release_notes.txt
         # This will create notes like: "- Commit message by @username"
 
       - name: Build
