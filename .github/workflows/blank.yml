@@ -1,65 +1,108 @@
-name: Build and Release
+name: Build Packages and Release Notes
 
 on:
   push:
     tags:
-      - 'release*'  # 监听以 release 开头的标签
+      - 'release*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        arch: [x86_64, arm]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 0  # 获取完整历史和所有标签
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          override: true
+          target: ${{ matrix.arch }}-unknown-linux-gnu  # Linux 用的目标架构
 
-      - name: Extract version from tag
-        id: extract_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/release-}" >> $GITHUB_ENV
-
-      - name: Generate release notes
+      - name: Generate Release Notes
         id: generate_notes
         run: |
-          echo "# What's Changed" > reelease_notes.md
+          echo "What's Changed" > release_notes.txt
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
           echo "Comparing changes from $PREVIOUS_TAG to HEAD"
           
           # 获取所有的 commit 信息
-          git log --pretty=format:"%s by @%an in #%h" $PREVIOUS_TAG..HEAD >> reelease_notes.md
+          git log --pretty=format:"%s by @%an in #%h" $PREVIOUS_TAG..HEAD >> release_notes.txt
 
-          echo "" >> reelease_notes.md
-          echo "# New Contributors" >> reelease_notes.md
+          echo "" >> release_notes.txt
+          echo "New Contributors" >> release_notes.txt
           
           # 获取新贡献者
           git log --pretty=format:"%an" $PREVIOUS_TAG..HEAD | sort | uniq -u | while read contributor; do
             FIRST_PR=$(git log --grep="$contributor" --pretty=format:"%h" --reverse $PREVIOUS_TAG..HEAD | head -n 1)
-            echo "@$contributor made their first contribution in #$FIRST_PR" >> reelease_notes.md
+            echo "@$contributor made their first contribution in #$FIRST_PR" >> release_notes.txt
           done
 
-          echo "" >> reelease_notes.md
-          echo "Full Changelog: $PREVIOUS_TAG...HEAD" >> reelease_notes.md
+          echo "" >> release_notes.txt
+          echo "Full Changelog: $PREVIOUS_TAG...HEAD" >> release_notes.txt
 
-      - name: Build
-        run: cargo build --release
+      - name: Extract Version
+        id: extract_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
-      - name: Package
+      - name: Build for Linux
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          mkdir -p release
-          cp target/release/testfs release/
+          cargo build --release --target=${{ matrix.arch }}-unknown-linux-gnu
+          # 生成 deb 包
+          fpm -s dir -t deb target/${{ matrix.arch }}-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
+          # 生成 rpm 包
+          fpm -s dir -t rpm target/${{ matrix.arch }}-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
 
-      - name: Create Release
+      - name: Build for Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install nsis
+          cargo build --release --target=x86_64-pc-windows-msvc
+          
+          # 创建 NSIS 脚本
+          echo 'OutFile "my_project_installer.exe"' > installer.nsi
+          echo 'InstallDir "$PROGRAMFILES\MyProject"' >> installer.nsi
+          echo 'RequestExecutionLevel admin' >> installer.nsi
+          echo 'Section' >> installer.nsi
+          echo '  SetOutPath $INSTDIR' >> installer.nsi
+          echo '  File "target/x86_64-pc-windows-msvc/release/my_project_name.exe"' >> installer.nsi
+          echo 'SectionEnd' >> installer.nsi
+          
+          # 生成安装程序
+          makensis installer.nsi
+
+      - name: Build for macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          cargo build --release --target=x86_64-apple-darwin
+          # 生成 macOS 包，例如使用 pkgbuild
+
+      - name: Build Source Package
+        run: |
+          cargo package
+          # tar.gz 包
+          tar -czvf my_project-${VERSION}.tar.gz target/package/my_project-${VERSION}
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref }}
-          name: ${{ env.VERSION }}
-          body_path: reelease_notes.md  # 使用生成的 reelease_notes.md 作为发布说明
-          files: release/*
+          name: Release ${{ github.ref }}
+          body_path: release_notes.txt  # 使用生成的 release_notes.txt 作为发布说明
+          files: |
+            target/${{ matrix.arch }}-unknown-linux-gnu/release/my_project_name
+            *.deb
+            *.rpm
+            my_project-${VERSION}.tar.gz
+            my_project.exe  # Windows 可执行文件
+            my_project_installer.exe  # Windows 安装程序
+            my_project.pkg  # macOS 包
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
