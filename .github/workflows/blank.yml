@@ -33,4 +33,4 @@ jobs:
           release_name: ${{ github.ref }}  # 使用推送的标签作为发布名称
           files: release/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
