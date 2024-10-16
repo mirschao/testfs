@@ -57,6 +57,9 @@ jobs:
         id: extract_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
+      - name: Add macOS target
+        run: rustup target add x86_64-apple-darwin
+
       - name: Build for Linux
         if: matrix.os == 'ubuntu-latest'
         run: |
