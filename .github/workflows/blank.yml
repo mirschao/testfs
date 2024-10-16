@@ -7,29 +7,23 @@ on:
 
 jobs:
   build:
+    runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-22.04, windows-latest, macos-latest]
-        arch: [x86_64, arm]
-
-    runs-on: ${{ matrix.os }}
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        arch: [x86_64]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-          target: ${{ matrix.arch }}-unknown-linux-gnu
-
-      - name: Install additional targets for Rust
-        if: matrix.arch == 'arm'
-        run: rustup target add arm-unknown-linux-gnu
+          target: x86_64-unknown-linux-gnu
 
       - name: Generate Release Notes
         id: generate_notes
@@ -56,18 +50,11 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: Build for Linux
-        if: matrix.os == 'ubuntu-latest' && matrix.arch == 'x86_64'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           cargo build --release --target=x86_64-unknown-linux-gnu
           fpm -s dir -t deb target/x86_64-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
           fpm -s dir -t rpm target/x86_64-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
-
-      - name: Build for ARM Linux
-        if: matrix.os == 'ubuntu-22.04' && matrix.arch == 'arm'
-        run: |
-          cargo build --release --target=arm-unknown-linux-gnu
-          fpm -s dir -t deb target/arm-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
-          fpm -s dir -t rpm target/arm-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
 
       - name: Build for Windows
         if: matrix.os == 'windows-latest'
