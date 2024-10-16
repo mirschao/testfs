@@ -18,6 +18,10 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Extract version from tag
+        id: extract_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/release-}" >> $GITHUB_ENV
+
       - name: Build
         run: cargo build --release
 
@@ -29,8 +33,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}  # 使用推送的标签作为版本号
-          release_name: ${{ github.ref }}  # 使用推送的标签作为发布名称
+          tag_name: ${{ github.ref }}
+          name: ${{ env.VERSION }}  # 使用提取出的版本号作为发布名称
           files: release/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
