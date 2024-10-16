@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # 获取完整历史和所有标签
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
@@ -25,9 +27,24 @@ jobs:
       - name: Generate release notes
         id: generate_notes
         run: |
-          echo "Changes in this release:" > release_notes.txt
-          git log --pretty=format:"- %s by @%an" >> release_notes.txt
-        # This will create notes like: "- Commit message by @username"
+          echo "# What's Changed" > reelease_notes.md
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
+          echo "Comparing changes from $PREVIOUS_TAG to HEAD"
+          
+          # 获取所有的 commit 信息
+          git log --pretty=format:"%s by @%an in #%h" $PREVIOUS_TAG..HEAD >> reelease_notes.md
+
+          echo "" >> reelease_notes.md
+          echo "# New Contributors" >> reelease_notes.md
+          
+          # 获取新贡献者
+          git log --pretty=format:"%an" $PREVIOUS_TAG..HEAD | sort | uniq -u | while read contributor; do
+            FIRST_PR=$(git log --grep="$contributor" --pretty=format:"%h" --reverse $PREVIOUS_TAG..HEAD | head -n 1)
+            echo "@$contributor made their first contribution in #$FIRST_PR" >> reelease_notes.md
+          done
+
+          echo "" >> reelease_notes.md
+          echo "Full Changelog: $PREVIOUS_TAG...HEAD" >> reelease_notes.md
 
       - name: Build
         run: cargo build --release
@@ -42,7 +59,7 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           name: ${{ env.VERSION }}
-          body_path: release_notes.txt  # 使用生成的 release_notes.txt 作为发布说明
+          body_path: reelease_notes.md  # 使用生成的 reelease_notes.md 作为发布说明
           files: release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
