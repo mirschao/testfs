@@ -22,6 +22,13 @@ jobs:
         id: extract_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/release-}" >> $GITHUB_ENV
 
+      - name: Generate release notes
+        id: generate_notes
+        run: |
+          echo "Changes in this release:" > release_notes.txt
+          git log --pretty=format:"- %s by @%an" refs/tags/release-*..HEAD >> release_notes.txt
+        # This will create notes like: "- Commit message by @username"
+
       - name: Build
         run: cargo build --release
 
@@ -34,7 +41,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref }}
-          name: ${{ env.VERSION }}  # 使用提取出的版本号作为发布名称
+          name: ${{ env.VERSION }}
+          body_path: release_notes.txt  # 使用生成的 release_notes.txt 作为发布说明
           files: release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
