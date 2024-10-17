@@ -1,105 +1,118 @@
-name: Build Packages and Release Notes
+name: Build and Release
 
 on:
   push:
     tags:
-      - 'release*'
+      - 'release*'  # 触发条件：当推送的标签符合 'v*' 格式时
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    name: Build for ${{ matrix.os }} on ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        arch: [x86_64]
-
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            arch: aarch64
+            target: aarch64-unknown-linux-gnu
+          - os: windows-latest
+            arch: x86_64
+            target: x86_64-pc-windows-gnu
+          - os: macos-latest
+            arch: x86_64
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            arch: aarch64
+            target: aarch64-apple-darwin
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v3
 
-      - name: Set up Rust
+      - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          target: ${{ matrix.target }}  # 设置目标架构
           override: true
-          target: x86_64-unknown-linux-gnu
 
-      - name: Install fpm
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload binary for Linux
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential
-          sudo gem install --no-document fpm
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/s3-rustfs artifacts/s3-rustfs-linux-${{ matrix.arch }}
 
-      - name: Generate Release Notes
-        id: generate_notes
+      - name: Upload binary for Windows
+        if: ${{ matrix.os == 'windows-latest' }}
         run: |
-          echo "What's Changed" > release_notes.txt
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
-          echo "Comparing changes from $PREVIOUS_TAG to HEAD"
-          
-          git log --pretty=format:"%s by @%an in #%h" $PREVIOUS_TAG..HEAD >> release_notes.txt
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/s3-rustfs.exe artifacts/s3-rustfs-windows-${{ matrix.arch }}.exe
 
-          echo "" >> release_notes.txt
-          echo "New Contributors" >> release_notes.txt
-          
-          git log --pretty=format:"%an" $PREVIOUS_TAG..HEAD | sort | uniq -u | while read contributor; do
-            FIRST_PR=$(git log --grep="$contributor" --pretty=format:"%h" --reverse $PREVIOUS_TAG..HEAD | head -n 1)
-            echo "@$contributor made their first contribution in #$FIRST_PR" >> release_notes.txt
-          done
-
-          echo "" >> release_notes.txt
-          echo "Full Changelog: $PREVIOUS_TAG...HEAD" >> release_notes.txt
-
-      - name: Extract Version
-        id: extract_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
-      - name: Build for Linux
-        if: matrix.os == 'ubuntu-latest'
+      - name: Upload binary for macOS
+        if: ${{ matrix.os == 'macos-latest' }}
         run: |
-          cargo build --release --target=x86_64-unknown-linux-gnu
-          fpm -s dir -t deb target/x86_64-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
-          fpm -s dir -t rpm target/x86_64-unknown-linux-gnu/release/my_project_name --name=my_project --version=${VERSION} --architecture=${{ matrix.arch }}
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/s3-rustfs artifacts/s3-rustfs-macos-${{ matrix.arch }}
 
-      - name: Build for Windows
-        if: matrix.os == 'windows-latest'
-        run: |
-          choco install nsis
-          cargo build --release --target=x86_64-pc-windows-msvc
-          
-          # 创建 NSIS 脚本
-          echo 'OutFile "my_project_installer.exe"' > installer.nsi
-          echo 'InstallDir "$PROGRAMFILES\MyProject"' >> installer.nsi
-          echo 'RequestExecutionLevel admin' >> installer.nsi
-          echo 'Section' >> installer.nsi
-          echo '  SetOutPath $INSTDIR' >> installer.nsi
-          echo '  File "target/x86_64-pc-windows-msvc/release/my_project_name.exe"' >> installer.nsi
-          echo 'SectionEnd' >> installer.nsi
-          
-          # 生成安装程序
-          makensis installer.nsi
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Build Source Package
-        run: |
-          cargo package
-          tar -czvf my_project-${VERSION}.tar.gz target/package/my_project-${VERSION}
-
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref }}
-          body_path: release_notes.txt
-          files: |
-            target/x86_64-unknown-linux-gnu/release/my_project_name
-            *.deb
-            *.rpm
-            my_project-${VERSION}.tar.gz
-            my_project.exe  # Windows 可执行文件
-            my_project_installer.exe  # Windows 安装程序
-            my_project.pkg  # macOS 包
+      - name: Create Release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Linux binaries
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/s3-rustfs-linux-x86_64
+          asset_name: s3-rustfs-linux-x86_64
+          asset_content_type: application/octet-stream
+
+      - name: Upload ARM Linux binaries
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/s3-rustfs-linux-aarch64
+          asset_name: s3-rustfs-linux-aarch64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows binaries
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/s3-rustfs-windows-x86_64.exe
+          asset_name: s3-rustfs-windows-x86_64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS binaries
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/s3-rustfs-macos-x86_64
+          asset_name: s3-rustfs-macos-x86_64
+          asset_content_type: application/octet-stream
+
+      - name: Upload ARM macOS binaries
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/s3-rustfs-macos-aarch64
+          asset_name: s3-rustfs-macos-aarch64
+          asset_content_type: application/octet-stream
