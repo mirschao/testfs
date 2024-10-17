@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'release*'  # 触发条件：当推送的标签符合 'v*' 格式时
+      - 'release*'
 
 jobs:
   build:
@@ -35,7 +35,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}  # 设置目标架构
+          target: ${{ matrix.target }}
           override: true
 
       - name: Build
@@ -45,21 +45,18 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
           mkdir -p artifacts
-          ls target/release
           cp target/release/testfs artifacts/testfs-linux-${{ matrix.arch }}
 
       - name: Upload binary for Windows
         if: ${{ matrix.os == 'windows-latest' }}
         run: |
           mkdir -p artifacts
-          ls target/release
           cp target/release/testfs.exe artifacts/testfs-windows-${{ matrix.arch }}.exe
 
       - name: Upload binary for macOS
         if: ${{ matrix.os == 'macos-latest' }}
         run: |
           mkdir -p artifacts
-          ls target/release
           cp target/release/testfs artifacts/testfs-macos-${{ matrix.arch }}
       
       - name: Upload artifacts for later jobs
@@ -80,6 +77,14 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           path: artifacts/
+
+      - name: Rename artifact directories
+        run: |
+          for dir in artifacts/testfs-*; do
+            new_dir="${dir/-latest/}"
+            mv "$dir" "$new_dir"
+          done
+          ls artifacts/
       
       - name: Create Release
         id: create_release
