@@ -90,57 +90,35 @@ jobs:
           done
           ls artifacts/
       
+      - name: Generate release notes
+        id: generate_notes
+        run: |
+          echo "Changes in this release:" > release_notes.txt
+          git log --pretty=format:"- %s by @%an" >> release_notes.txt
+          echo "# What's Changed" > reelease_notes.md
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
+          echo "Comparing changes from $PREVIOUS_TAG to HEAD"
+            
+          # 获取所有的 commit 信息
+          git log --pretty=format:"%s by @%an in #%h" $PREVIOUS_TAG..HEAD >> reelease_notes.md
+          echo "" >> reelease_notes.md
+          echo "# New Contributors" >> reelease_notes.md
+            
+          # 获取新贡献者
+          git log --pretty=format:"%an" $PREVIOUS_TAG..HEAD | sort | uniq -u | while read contributor; do
+            FIRST_PR=$(git log --grep="$contributor" --pretty=format:"%h" --reverse $PREVIOUS_TAG..HEAD | head -n 1)
+            echo "@$contributor made their first contribution in #$FIRST_PR" >> reelease_notes.md
+          done
+          echo "" >> reelease_notes.md
+          echo "Full Changelog: $PREVIOUS_TAG...HEAD" >> reelease_notes.md
+  
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-
-      - name: list dir
-        run: |
-          ls -l artifacts/
-
-      - name: Upload Linux binaries
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/testfs-linux-x86_64
-          asset_name: testfs-linux-x86_64
-          asset_content_type: application/octet-stream
-
-      - name: Upload ARM Linux binaries
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/testfs-linux-aarch64
-          asset_name: testfs-linux-aarch64
-          asset_content_type: application/octet-stream
-
-      - name: Upload Windows binaries
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/testfs-windows-x86_64.exe
-          asset_name: testfs-windows-x86_64.exe
-          asset_content_type: application/octet-stream
-
-      - name: Upload macOS binaries
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/testfs-macos-x86_64
-          asset_name: testfs-macos-x86_64
-          asset_content_type: application/octet-stream
-
-      - name: Upload ARM macOS binaries
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/testfs-macos-aarch64
-          asset_name: testfs-macos-aarch64
-          asset_content_type: application/octet-stream
+          name: ${{ env.VERSION }}
+          body_path: release_notes.txt  # 使用生成的 release_notes.txt 作为发布说明
+          body_path: reelease_notes.md  # 使用生成的 reelease_notes.md 作为发布说明
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
