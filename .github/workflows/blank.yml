@@ -93,8 +93,6 @@ jobs:
       - name: Generate release notes
         id: generate_notes
         run: |
-          echo "Changes in this release:" > release_notes.txt
-          git log --pretty=format:"- %s by @%an" >> release_notes.txt
           echo "# What's Changed" > reelease_notes.md
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
           echo "Comparing changes from $PREVIOUS_TAG to HEAD"
@@ -117,7 +115,6 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           name: ${{ env.VERSION }}
-          body_path: release_notes.txt  # 使用生成的 release_notes.txt 作为发布说明
           body_path: reelease_notes.md  # 使用生成的 reelease_notes.md 作为发布说明
           files: release/*
         env:
