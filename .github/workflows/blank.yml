@@ -61,6 +61,12 @@ jobs:
           mkdir -p artifacts
           ls target/release
           cp target/release/testfs artifacts/testfs-macos-${{ matrix.arch }}
+      
+      - name: Upload artifacts for later jobs
+        uses: actions/upload-artifact@v3
+        with:
+          name: testfs-${{ matrix.os }}-${{ matrix.arch }}
+          path: artifacts/
 
   release:
     name: Create GitHub Release
@@ -69,6 +75,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+      
+      - name: Download artifacts from previous job
+        uses: actions/download-artifact@v3
+        with:
+          name: testfs-${{ matrix.os }}-${{ matrix.arch }}
 
       - name: Create Release
         id: create_release
