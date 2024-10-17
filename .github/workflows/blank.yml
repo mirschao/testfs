@@ -45,18 +45,21 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
           mkdir -p artifacts
+          ls target/release
           cp target/release/s3-rustfs artifacts/s3-rustfs-linux-${{ matrix.arch }}
 
       - name: Upload binary for Windows
         if: ${{ matrix.os == 'windows-latest' }}
         run: |
           mkdir -p artifacts
+          ls target/release
           cp target/release/s3-rustfs.exe artifacts/s3-rustfs-windows-${{ matrix.arch }}.exe
 
       - name: Upload binary for macOS
         if: ${{ matrix.os == 'macos-latest' }}
         run: |
           mkdir -p artifacts
+          ls target/release
           cp target/release/s3-rustfs artifacts/s3-rustfs-macos-${{ matrix.arch }}
 
   release:
