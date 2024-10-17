@@ -46,21 +46,21 @@ jobs:
         run: |
           mkdir -p artifacts
           ls target/release
-          cp target/release/s3-rustfs artifacts/s3-rustfs-linux-${{ matrix.arch }}
+          cp target/release/testfs artifacts/testfs-linux-${{ matrix.arch }}
 
       - name: Upload binary for Windows
         if: ${{ matrix.os == 'windows-latest' }}
         run: |
           mkdir -p artifacts
           ls target/release
-          cp target/release/s3-rustfs.exe artifacts/s3-rustfs-windows-${{ matrix.arch }}.exe
+          cp target/release/testfs.exe artifacts/testfs-windows-${{ matrix.arch }}.exe
 
       - name: Upload binary for macOS
         if: ${{ matrix.os == 'macos-latest' }}
         run: |
           mkdir -p artifacts
           ls target/release
-          cp target/release/s3-rustfs artifacts/s3-rustfs-macos-${{ matrix.arch }}
+          cp target/release/testfs artifacts/testfs-macos-${{ matrix.arch }}
 
   release:
     name: Create GitHub Release
@@ -84,38 +84,38 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/s3-rustfs-linux-x86_64
-          asset_name: s3-rustfs-linux-x86_64
+          asset_path: artifacts/testfs-linux-x86_64
+          asset_name: testfs-linux-x86_64
           asset_content_type: application/octet-stream
 
       - name: Upload ARM Linux binaries
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/s3-rustfs-linux-aarch64
-          asset_name: s3-rustfs-linux-aarch64
+          asset_path: artifacts/testfs-linux-aarch64
+          asset_name: testfs-linux-aarch64
           asset_content_type: application/octet-stream
 
       - name: Upload Windows binaries
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/s3-rustfs-windows-x86_64.exe
-          asset_name: s3-rustfs-windows-x86_64.exe
+          asset_path: artifacts/testfs-windows-x86_64.exe
+          asset_name: testfs-windows-x86_64.exe
           asset_content_type: application/octet-stream
 
       - name: Upload macOS binaries
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/s3-rustfs-macos-x86_64
-          asset_name: s3-rustfs-macos-x86_64
+          asset_path: artifacts/testfs-macos-x86_64
+          asset_name: testfs-macos-x86_64
           asset_content_type: application/octet-stream
 
       - name: Upload ARM macOS binaries
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/s3-rustfs-macos-aarch64
-          asset_name: s3-rustfs-macos-aarch64
+          asset_path: artifacts/testfs-macos-aarch64
+          asset_name: testfs-macos-aarch64
           asset_content_type: application/octet-stream
