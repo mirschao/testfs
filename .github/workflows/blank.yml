@@ -81,8 +81,12 @@ jobs:
       - name: Rename artifact directories
         run: |
           for dir in artifacts/testfs-*; do
-            new_dir="${dir/-latest/}"
-            mv "$dir" "$new_dir"
+            new_dir=$(echo "${dir/-latest/}" | sed 's/ubuntu/linux/')
+            if [ "$new_dir" == "testfs-windows-x86_64" ]; then
+              mv "$dir" "$new_dir".exe
+            else
+              mv "$dir" "$new_dir"
+            fi
           done
           ls artifacts/
       
