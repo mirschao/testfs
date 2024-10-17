@@ -72,24 +72,6 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            arch: x86_64
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            arch: aarch64
-            target: aarch64-unknown-linux-gnu
-          - os: windows-latest
-            arch: x86_64
-            target: x86_64-pc-windows-gnu
-          - os: macos-latest
-            arch: x86_64
-            target: x86_64-apple-darwin
-          - os: macos-latest
-            arch: aarch64
-            target: aarch64-apple-darwin
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -97,10 +79,28 @@ jobs:
       - name: Download artifacts from previous job
         uses: actions/download-artifact@v3
         with:
-          name: testfs-${{ matrix.os }}-${{ matrix.arch }}
+          name: testfs-*
+      
+      - name: Check if Release already exists
+        id: check_release
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            return releases.find(release => release.tag_name === '${{ github.ref_name }}') ? true : false;
+
+      - name: Stop if release already exists
+        if: steps.check_release.outputs.result == 'true'
+        run: |
+          echo "Release ${{ github.ref_name }} already exists. Skipping release creation."
+          exit 0
 
       - name: Create Release
         id: create_release
+        if: steps.check_release.outputs.result != 'true'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
