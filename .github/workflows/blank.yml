@@ -3,125 +3,96 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'release*'
+      - 'release-*'
 
 jobs:
   build:
-    name: Build for ${{ matrix.os }} on ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [windows-latest, ubuntu-latest, ubuntu-latest-arm, macos-latest, macos-latest-arm]
         include:
-          - os: ubuntu-latest
-            arch: x86_64
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            arch: aarch64
-            target: aarch64-unknown-linux-gnu
           - os: windows-latest
-            arch: x86_64
-            target: x86_64-pc-windows-gnu
+            target: 'x86_64'
+            output: 'rustfs-win-${{ github.ref_name }}-x86_64.exe'
+          - os: ubuntu-latest
+            target: 'x86_64'
+            output: 'rustfs-linux-${{ github.ref_name }}-x86_64'
+          - os: ubuntu-latest-arm
+            target: 'arm'
+            output: 'rustfs-linux-${{ github.ref_name }}-arm'
           - os: macos-latest
-            arch: x86_64
-            target: x86_64-apple-darwin
-          - os: macos-latest
-            arch: aarch64
-            target: aarch64-apple-darwin
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+            target: 'x86_64'
+            output: 'rustfs-macos-${{ github.ref_name }}-x86_64.dmg'
+          - os: macos-latest-arm
+            target: 'arm'
+            output: 'rustfs-macos-${{ github.ref_name }}-arm.dmg'
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Set up Rust
+        uses: rust-lang/rustup@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
           override: true
+          components: rustfmt, clippy
 
-      - name: Build
-        run: cargo build --release
-
-      - name: Upload binary for Linux
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Build Project
         run: |
-          mkdir -p artifacts
-          cp target/release/testfs artifacts/testfs-linux-${{ matrix.arch }}
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cargo build --release
+            cp target/release/your_binary.exe ${{ matrix.output }}
+          elif [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            cargo build --release
+            cp target/release/your_binary ${{ matrix.output }}
+            fpm -s dir -t rpm --name rustfs-linux --version ${{ github.ref_name }} ${{ matrix.output }} .
+            fpm -s dir -t deb --name rustfs-linux --version ${{ github.ref_name }} ${{ matrix.output }} .
+            docker build -t rustfs/s3-rustfs:${{ github.ref_name }} .
+            docker push rustfs/s3-rustfs:${{ github.ref_name }}
+          elif [[ "${{ matrix.os }}" == "ubuntu-latest-arm" ]]; then
+            cargo build --release --target=arm-unknown-linux-gnueabi
+            cp target/arm-unknown-linux-gnueabi/release/your_binary ${{ matrix.output }}
+            fpm -s dir -t rpm --name rustfs-linux --version ${{ github.ref_name }} ${{ matrix.output }} .
+            fpm -s dir -t deb --name rustfs-linux --version ${{ github.ref_name }} ${{ matrix.output }} .
+            docker build -t rustfs/s3-rustfs:arm-${{ github.ref_name }} .
+            docker push rustfs/s3-rustfs:arm-${{ github.ref_name }}
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            cargo build --release
+            cp target/release/your_binary ${{ matrix.output }}
+          elif [[ "${{ matrix.os }}" == "macos-latest-arm" ]]; then
+            cargo build --release --target=aarch64-apple-darwin
+            cp target/aarch64-apple-darwin/release/your_binary ${{ matrix.output }}
+          fi
 
-      - name: Upload binary for Windows
-        if: ${{ matrix.os == 'windows-latest' }}
-        run: |
-          mkdir -p artifacts
-          cp target/release/testfs.exe artifacts/testfs-windows-${{ matrix.arch }}.exe
-
-      - name: Upload binary for macOS
-        if: ${{ matrix.os == 'macos-latest' }}
-        run: |
-          mkdir -p artifacts
-          cp target/release/testfs artifacts/testfs-macos-${{ matrix.arch }}
-      
-      - name: Upload artifacts for later jobs
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: testfs-${{ matrix.os }}-${{ matrix.arch }}
-          path: artifacts/
+          name: ${{ matrix.output }}
+          path: ${{ matrix.output }}
 
-  release:
-    name: Create GitHub Release
-    needs: build
+  finalize:
     runs-on: ubuntu-latest
+    needs: build
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      
-      - name: Download artifacts from previous job
+      - name: Download Artifacts
         uses: actions/download-artifact@v3
         with:
+          name: artifacts
           path: artifacts/
-      
-      - name: Extract version from tag
-        id: extract_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/release-}" >> $GITHUB_ENV
 
-      - name: Rename artifact directories
+      - name: Generate Release Notes
         run: |
-          for dir in artifacts/testfs-*; do
-            new_dir=$(echo "${dir/-latest/}" | sed 's/ubuntu/linux/')
-            if [ "$new_dir" == "testfs-windows-x86_64" ]; then
-              mv "$dir" "$new_dir".exe
-            else
-              mv "$dir" "$new_dir"
-            fi
-          done
-          ls artifacts/
-      
-      - name: Generate release notes
-        id: generate_notes
-        run: |
-          echo "# What's Changed" > release_notes.md
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
-          echo "Comparing changes from $PREVIOUS_TAG to HEAD"
-            
-          # 获取所有的 commit 信息
-          git log --pretty=format:"%s by @%an in #%h" $PREVIOUS_TAG..HEAD >> release_notes.md
-          echo "" >> release_notes.md
-          echo "# New Contributors" >> release_notes.md
-            
-          # 获取新贡献者
-          git log --pretty=format:"%an" $PREVIOUS_TAG..HEAD | sort | uniq -u | while read contributor; do
-            FIRST_PR=$(git log --grep="$contributor" --pretty=format:"%h" --reverse $PREVIOUS_TAG..HEAD | head -n 1)
-            echo "@$contributor made their first contribution in #$FIRST_PR" >> release_notes.md
-          done
-          echo "" >> release_notes.md
-          echo "Full Changelog: $PREVIOUS_TAG...HEAD" >> release_notes.md
-  
+          echo "# Release Notes" > release.md
+          git log --merges --since="$(date -I)" --pretty=format:'* %h - %s by %an' >> release.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          name: ${{ env.VERSION }}
-          body_path: release_notes.md  # 使用生成的 release_notes.md 作为发布说明
-          files: artifacts/**
+          tag_name: ${{ github.ref_name }}
+          files: artifacts/*
+          release_name: Release ${{ github.ref_name }}
+          body_path: release.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
